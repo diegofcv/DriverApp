@@ -103,6 +103,31 @@ export default function QueueManagement({ drivers }: QueueManagementProps) {
     },
   });
 
+  const deactivateDriverMutation = useMutation({
+    mutationFn: async (driverId: number) => {
+      const response = await apiRequest("PATCH", `/api/drivers/${driverId}/status`, {
+        status: "inactive",
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/drivers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/queue"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      toast({
+        title: "Driver Deactivated",
+        description: `${data.name} deactivated and removed from queue`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to deactivate driver",
+        variant: "destructive",
+      });
+    },
+  });
+
   const getActiveTime = (driver: Driver) => {
     if (!driver.activeTime) return "0m";
     const diff = Date.now() - new Date(driver.activeTime).getTime();
@@ -206,6 +231,15 @@ export default function QueueManagement({ drivers }: QueueManagementProps) {
                       <span className="text-xs text-gray-500">
                         Active {getActiveTime(driver)}
                       </span>
+                      <Button
+                        onClick={() => deactivateDriverMutation.mutate(driver.id)}
+                        disabled={deactivateDriverMutation.isPending}
+                        variant="outline"
+                        size="sm"
+                        className="text-xs py-1 px-2 h-auto text-gray-600 hover:text-red-600 hover:border-red-300"
+                      >
+                        End Shift
+                      </Button>
                     </div>
                   </div>
                 </div>
