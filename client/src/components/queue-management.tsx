@@ -220,7 +220,7 @@ export default function QueueManagement({ drivers }: QueueManagementProps) {
         <Card>
           <CardHeader>
             <CardTitle>Busy Drivers</CardTitle>
-            <p className="text-sm text-gray-600">Currently out on deliveries</p>
+            <p className="text-sm text-gray-600">Currently out on deliveries - click driver names to mark as returned</p>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -232,7 +232,13 @@ export default function QueueManagement({ drivers }: QueueManagementProps) {
                         <Bike className="h-4 w-4" />
                       </div>
                       <div>
-                        <h4 className="text-lg font-medium text-gray-900">{driver.name}</h4>
+                        <button
+                          className="text-lg font-medium text-gray-900 hover:text-emerald-600 transition-colors text-left"
+                          onClick={() => returnDriverMutation.mutate(driver.id)}
+                          disabled={returnDriverMutation.isPending}
+                        >
+                          {driver.name}
+                        </button>
                         <p className="text-sm text-gray-600">{driver.phone}</p>
                       </div>
                     </div>
