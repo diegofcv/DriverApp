@@ -1,4 +1,6 @@
 import { drivers, type Driver, type InsertDriver, type DriverStatus, type QueueStats } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   getDriver(id: number): Promise<Driver | undefined>;
@@ -13,60 +15,49 @@ export interface IStorage {
   reorderQueue(): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private drivers: Map<number, Driver>;
-  private currentId: number;
-
-  constructor() {
-    this.drivers = new Map();
-    this.currentId = 1;
-  }
-
+export class DatabaseStorage implements IStorage {
   async getDriver(id: number): Promise<Driver | undefined> {
-    return this.drivers.get(id);
+    const [driver] = await db.select().from(drivers).where(eq(drivers.id, id));
+    return driver || undefined;
   }
 
   async getAllDrivers(): Promise<Driver[]> {
-    return Array.from(this.drivers.values());
+    return await db.select().from(drivers);
   }
 
   async getDriversByStatus(status: DriverStatus): Promise<Driver[]> {
-    return Array.from(this.drivers.values()).filter(driver => driver.status === status);
+    return await db.select().from(drivers).where(eq(drivers.status, status));
   }
 
   async createDriver(insertDriver: InsertDriver): Promise<Driver> {
-    const id = this.currentId++;
-    const driver: Driver = {
-      ...insertDriver,
-      id,
-      status: "inactive",
-      position: 0,
-      activeTime: null,
-      deliveriesCount: 0,
-    };
-    this.drivers.set(id, driver);
+    const [driver] = await db
+      .insert(drivers)
+      .values(insertDriver)
+      .returning();
     return driver;
   }
 
   async updateDriverStatus(id: number, status: DriverStatus): Promise<Driver | undefined> {
-    const driver = this.drivers.get(id);
+    const driver = await this.getDriver(id);
     if (!driver) return undefined;
 
-    const updatedDriver = {
-      ...driver,
+    const updateData: Partial<Driver> = {
       status,
       activeTime: status === 'active' ? new Date() : driver.activeTime,
     };
-
-    this.drivers.set(id, updatedDriver);
 
     // If driver becomes active, add to end of queue
     if (status === 'active' && driver.status !== 'active') {
       const activeDrivers = await this.getDriversByStatus('active');
       const maxPosition = activeDrivers.reduce((max, d) => Math.max(max, d.position || 0), 0);
-      updatedDriver.position = maxPosition + 1;
-      this.drivers.set(id, updatedDriver);
+      updateData.position = maxPosition + 1;
     }
+
+    const [updatedDriver] = await db
+      .update(drivers)
+      .set(updateData)
+      .where(eq(drivers.id, id))
+      .returning();
 
     // If driver becomes busy or inactive, reorder queue
     if (status !== 'active') {
@@ -77,25 +68,28 @@ export class MemStorage implements IStorage {
   }
 
   async updateDriverPosition(id: number, position: number): Promise<Driver | undefined> {
-    const driver = this.drivers.get(id);
-    if (!driver) return undefined;
-
-    const updatedDriver = { ...driver, position };
-    this.drivers.set(id, updatedDriver);
-    return updatedDriver;
+    const [updatedDriver] = await db
+      .update(drivers)
+      .set({ position })
+      .where(eq(drivers.id, id))
+      .returning();
+    return updatedDriver || undefined;
   }
 
   async incrementDeliveryCount(id: number): Promise<Driver | undefined> {
-    const driver = this.drivers.get(id);
+    const driver = await this.getDriver(id);
     if (!driver) return undefined;
 
-    const updatedDriver = { ...driver, deliveriesCount: (driver.deliveriesCount || 0) + 1 };
-    this.drivers.set(id, updatedDriver);
-    return updatedDriver;
+    const [updatedDriver] = await db
+      .update(drivers)
+      .set({ deliveriesCount: (driver.deliveriesCount || 0) + 1 })
+      .where(eq(drivers.id, id))
+      .returning();
+    return updatedDriver || undefined;
   }
 
   async getQueueStats(): Promise<QueueStats> {
-    const allDrivers = Array.from(this.drivers.values());
+    const allDrivers = await this.getAllDrivers();
     return {
       totalDrivers: allDrivers.length,
       activeDrivers: allDrivers.filter(d => d.status === 'active').length,
@@ -113,11 +107,13 @@ export class MemStorage implements IStorage {
     const activeDrivers = await this.getDriversByStatus('active');
     activeDrivers.sort((a, b) => (a.position || 0) - (b.position || 0));
     
-    activeDrivers.forEach((driver, index) => {
-      const updatedDriver = { ...driver, position: index + 1 };
-      this.drivers.set(driver.id, updatedDriver);
-    });
+    for (let i = 0; i < activeDrivers.length; i++) {
+      await db
+        .update(drivers)
+        .set({ position: i + 1 })
+        .where(eq(drivers.id, activeDrivers[i].id));
+    }
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
