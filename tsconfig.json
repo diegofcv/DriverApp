@@ -7,7 +7,6 @@
     "noEmit": true,
     "target": "esnext", // Compile to a modern ECMAScript version that supports ES modules
     "module": "ESNext",
-    "esModuleInterop": true, // Enables default imports from modules with no default export
     "strict": true,
     "lib": ["esnext", "dom", "dom.iterable"],
     "jsx": "preserve",
